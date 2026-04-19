@@ -221,4 +221,3 @@ http://localhost:5000
 | **Teacher** | Start/end sessions, take attendance, view reports |
 | **Student** | View own attendance records and stats |
 
----
