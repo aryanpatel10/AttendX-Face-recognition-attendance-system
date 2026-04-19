@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FaceAttend — Take Attendance</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <div class="page-header">
+      <h1>Live Attendance</h1>
+      <p>Camera recognises faces every 2 seconds and marks attendance automatically</p>
+    </div>
+    <div class="page-body">
+      <div class="grid-2" style="align-items:start">
+
+        <!-- Left: Camera -->
+        <div style="display:flex;flex-direction:column;gap:16px">
+
+          <!-- Session controls -->
+          <div class="card card-body" id="session-ctrl">
+            <h3 style="margin-bottom:14px">Start Session</h3>
+            <div style="display:flex;gap:10px">
+              <select id="subject-sel" class="w-full">
+                <option value="">Select subject...</option>
+              </select>
+              <button class="btn btn-primary" onclick="startSession()">▶ Start</button>
+            </div>
+          </div>
+
+          <div class="card card-body" id="session-active" style="display:none">
+            <div class="flex-between">
+              <div class="flex-center gap-2">
+                <span class="pulse-dot"></span>
+                <span style="font-weight:600;color:#16a34a">Session Active</span>
+                <span class="text-muted text-sm" id="session-id-label"></span>
+              </div>
+              <div class="flex-center gap-2">
+                <button class="btn btn-secondary btn-sm" id="btn-scan" onclick="startScan()">📷 Scan</button>
+                <button class="btn btn-danger btn-sm" onclick="endSession()">⏹ End</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Camera view -->
+          <div class="card" style="overflow:hidden">
+            <div class="camera-wrapper" id="cam-wrapper" style="position:relative;background:#000;aspect-ratio:4/3">
+              <video id="video" autoplay playsinline muted style="width:100%;height:100%;object-fit:cover;display:block"></video>
+              <canvas id="overlay" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none"></canvas>
+              <div id="cam-status" style="display:none;position:absolute;top:10px;left:10px;background:rgba(0,0,0,.6);color:#fff;font-size:.75rem;padding:4px 10px;border-radius:99px;display:flex;align-items:center;gap:6px">
+                <span class="pulse-dot"></span> <span id="cam-status-text">Scanning...</span>
+              </div>
+              <div id="cam-placeholder" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#94a3b8;gap:12px;background:#111;padding:20px;text-align:center">
+                <div style="font-size:48px">📷</div>
+                <p style="font-size:.9rem">Start a session to activate camera</p>
+              </div>
+              <div id="cam-error" style="display:none;position:absolute;inset:0;background:#1a0000;color:#fca5a5;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:20px;text-align:center">
+                <div style="font-size:40px">⚠️</div>
+                <p id="cam-error-msg" style="font-size:.85rem"></p>
+                <button class="btn btn-secondary btn-sm" onclick="retryCamera()">Retry Camera</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Camera permission helper -->
+          <div id="permission-help" style="display:none" class="card card-body" style="background:#fefce8;border-color:#fde68a">
+            <p style="font-weight:600;margin-bottom:8px;color:#92400e">📷 Camera Access Required</p>
+            <ol style="padding-left:18px;font-size:.83rem;color:#78350f;display:flex;flex-direction:column;gap:4px">
+              <li>Click the 🔒 lock icon in the browser address bar</li>
+              <li>Set Camera to <strong>Allow</strong></li>
+              <li>Reload the page</li>
+            </ol>
+            <p style="margin-top:8px;font-size:.78rem;color:#a16207">On macOS: System Settings → Privacy → Camera → Allow your browser</p>
+          </div>
+
+          <!-- How it works -->
+          <div class="card card-body" style="background:#f0f9ff;border-color:#bae6fd" id="how-it-works">
+            <h3 style="margin-bottom:10px;color:#0c4a6e">How it works</h3>
+            <ol style="padding-left:18px;display:flex;flex-direction:column;gap:6px;color:#0369a1;font-size:.85rem">
+              <li>Select a subject and press Start</li>
+              <li>Allow camera access when browser asks</li>
+              <li>Camera scans every 2 seconds automatically</li>
+              <li>Recognised faces are marked present instantly</li>
+              <li>Press End Session when class is done</li>
+            </ol>
+          </div>
+        </div>
+
+        <!-- Right: Live summary -->
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <div class="card" id="summary-panel">
+            <div class="card-header">Session Summary</div>
+            <div class="card-body">
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px">
+                <div style="text-align:center;padding:12px;background:#f0fdf4;border-radius:8px">
+                  <div style="font-size:1.8rem;font-weight:700;color:#16a34a" id="cnt-present">0</div>
+                  <div style="font-size:.72rem;color:#16a34a">Present</div>
+                </div>
+                <div style="text-align:center;padding:12px;background:#fef2f2;border-radius:8px">
+                  <div style="font-size:1.8rem;font-weight:700;color:#dc2626" id="cnt-absent">0</div>
+                  <div style="font-size:.72rem;color:#dc2626">Absent</div>
+                </div>
+                <div style="text-align:center;padding:12px;background:#eff6ff;border-radius:8px">
+                  <div style="font-size:1.8rem;font-weight:700;color:#2563eb" id="cnt-pct">—</div>
+                  <div style="font-size:.72rem;color:#2563eb">Rate</div>
+                </div>
+              </div>
+
+              <div id="present-list" style="max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:6px">
+                <p class="text-muted text-sm" style="text-align:center;padding:16px">No one marked present yet</p>
+              </div>
+
+              <div id="absent-section" style="display:none;margin-top:14px">
+                <p style="font-size:.75rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Absent</p>
+                <div id="absent-list" style="max-height:150px;overflow-y:auto;display:flex;flex-direction:column;gap:4px"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Manual override -->
+          <div class="card card-body" id="manual-panel" style="display:none">
+            <h3 style="margin-bottom:12px">Manual Override</h3>
+            <div style="display:flex;gap:8px">
+              <input id="manual-sid" class="w-full" placeholder="Student ID (e.g. CS2024001)" />
+              <select id="manual-status">
+                <option value="present">Present</option>
+                <option value="absent">Absent</option>
+                <option value="late">Late</option>
+              </select>
+              <button class="btn btn-secondary btn-sm" onclick="manualMark()">Mark</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="toast-container"></div>
+<script src="/js/app.js"></script>
+<script>
+renderLayout('attendance');
+
+let sessionId = null;
+let stream = null;
+let scanInterval = null;
+let scanning = false;
+
+// Load subjects
+(async () => {
+  try {
+    const subjects = await apiFetch('/subjects/');
+    const sel = document.getElementById('subject-sel');
+    subjects.forEach(s => {
+      const o = document.createElement('option');
+      o.value = s.id;
+      o.textContent = s.code + ' — ' + s.name;
+      sel.appendChild(o);
+    });
+  } catch(e) { showToast('Could not load subjects', 'error'); }
+})();
+
+async function startSession() {
+  const subjectId = document.getElementById('subject-sel').value;
+  if (!subjectId) { showToast('Select a subject first', 'error'); return; }
+  try {
+    const data = await apiFetch('/attendance/sessions/start', {
+      method: 'POST',
+      body: JSON.stringify({ subject_id: parseInt(subjectId) })
+    });
+    sessionId = data.session_id;
+    document.getElementById('session-ctrl').style.display = 'none';
+    document.getElementById('session-active').style.display = '';
+    document.getElementById('session-id-label').textContent = '#' + sessionId;
+    document.getElementById('manual-panel').style.display = '';
+    document.getElementById('how-it-works').style.display = 'none';
+    showToast('Session started!', 'success');
+    await startCamera();
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
+async function startCamera() {
+  // Hide placeholder and error
+  document.getElementById('cam-placeholder').style.display = 'none';
+  document.getElementById('cam-error').style.display = 'none';
+  document.getElementById('permission-help').style.display = 'none';
+
+  // Check if browser supports getUserMedia
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    showCameraError('Your browser does not support camera access. Please use Chrome or Safari.');
+    return;
+  }
+
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' }
+    });
+    const video = document.getElementById('video');
+    video.srcObject = stream;
+    await video.play();
+    showToast('Camera started!', 'success');
+    startScan();
+    refreshSummary();
+  } catch(err) {
+    console.error('Camera error:', err);
+    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+      showCameraError('Camera permission denied. Please allow camera access in your browser settings.');
+      document.getElementById('permission-help').style.display = '';
+    } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+      showCameraError('No camera found on this device.');
+    } else if (err.name === 'NotReadableError') {
+      showCameraError('Camera is being used by another app. Close other apps using the camera and retry.');
+    } else {
+      showCameraError('Camera error: ' + err.message);
+    }
+  }
+}
+
+function showCameraError(msg) {
+  document.getElementById('cam-error').style.display = 'flex';
+  document.getElementById('cam-error-msg').textContent = msg;
+  document.getElementById('cam-status').style.display = 'none';
+}
+
+function retryCamera() {
+  startCamera();
+}
+
+function startScan() {
+  if (scanning) return;
+  scanning = true;
+  document.getElementById('btn-scan').textContent = '⏸ Pause';
+  document.getElementById('btn-scan').onclick = pauseScan;
+  document.getElementById('cam-status').style.display = 'flex';
+  scanInterval = setInterval(captureAndRecognize, 2000);
+}
+
+function pauseScan() {
+  scanning = false;
+  clearInterval(scanInterval);
+  document.getElementById('btn-scan').textContent = '📷 Scan';
+  document.getElementById('btn-scan').onclick = startScan;
+  document.getElementById('cam-status').style.display = 'none';
+}
+
+async function captureAndRecognize() {
+  if (!sessionId || !stream) return;
+  const video = document.getElementById('video');
+  if (!video.videoWidth || video.readyState < 2) return;
+
+  const canvas = document.createElement('canvas');
+  canvas.width  = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+  const frameB64 = canvas.toDataURL('image/jpeg', 0.8);
+
+  document.getElementById('cam-status-text').textContent = 'Processing...';
+  try {
+    const data = await apiFetch('/attendance/recognize', {
+      method: 'POST',
+      body: JSON.stringify({ frame: frameB64, session_id: sessionId })
+    });
+    drawFaceOverlays(data.results, video.videoWidth, video.videoHeight);
+    data.results.forEach(r => {
+      if (r.just_marked) {
+        showToast('✓ ' + r.match.name + ' marked present (' + r.match.confidence + '%)', 'success');
+      }
+    });
+    if (data.results.some(r => r.just_marked)) refreshSummary();
+  } catch(e) {
+    // silent fail during scanning
+  }
+  document.getElementById('cam-status-text').textContent = 'Scanning';
+}
+
+function drawFaceOverlays(results, vw, vh) {
+  const overlay  = document.getElementById('overlay');
+  const wrapper  = document.getElementById('cam-wrapper');
+  overlay.width  = wrapper.offsetWidth;
+  overlay.height = wrapper.offsetHeight;
+  const scaleX = wrapper.offsetWidth / vw;
+  const scaleY = wrapper.offsetHeight / vh;
+  const ctx = overlay.getContext('2d');
+  ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+  results.forEach(r => {
+    const { x, y, w, h } = r.face_region;
+    const px = x * scaleX, py = y * scaleY, pw = w * scaleX, ph = h * scaleY;
+    ctx.strokeStyle = r.recognized ? '#22c55e' : '#ef4444';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(px, py, pw, ph);
+
+    const label = r.recognized ? r.match.name + ' ' + r.match.confidence + '%' : 'Unknown';
+    const labelW = ctx.measureText(label).width + 12;
+    ctx.fillStyle = r.recognized ? '#22c55e' : '#ef4444';
+    ctx.fillRect(px, py - 22, labelW, 20);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 11px Inter, sans-serif';
+    ctx.fillText(label, px + 6, py - 7);
+  });
+}
+
+async function endSession() {
+  if (!sessionId) return;
+  pauseScan();
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  try {
+    await apiFetch('/attendance/sessions/' + sessionId + '/end', { method: 'POST' });
+    await refreshSummary();
+    showToast('Session ended', 'success');
+  } catch(e) {}
+  sessionId = null;
+  setTimeout(() => location.reload(), 1500);
+}
+
+async function refreshSummary() {
+  if (!sessionId) return;
+  try {
+    const data = await apiFetch('/attendance/sessions/' + sessionId + '/summary');
+    document.getElementById('cnt-present').textContent = data.present_count;
+    document.getElementById('cnt-absent').textContent  = data.absent_count;
+    document.getElementById('cnt-pct').textContent     = data.percentage + '%';
+
+    const pl = document.getElementById('present-list');
+    if (!data.present.length) {
+      pl.innerHTML = '<p class="text-muted text-sm" style="text-align:center;padding:16px">No one marked present yet</p>';
+    } else {
+      pl.innerHTML = data.present.map(p => `
+        <div style="display:flex;align-items:center;gap:8px;padding:8px;background:#f0fdf4;border-radius:8px">
+          <span style="color:#16a34a">✓</span>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:.85rem;font-weight:500">${p.full_name}</div>
+            <div style="font-size:.72rem;color:#94a3b8">${p.student_id}</div>
+          </div>
+          ${p.recognition_confidence ? '<span style="font-size:.72rem;color:#16a34a;font-weight:600">' + p.recognition_confidence.toFixed(1) + '%</span>' : ''}
+        </div>`).join('');
+    }
+
+    const ab = document.getElementById('absent-section');
+    if (data.absent.length) {
+      ab.style.display = '';
+      document.getElementById('absent-list').innerHTML = data.absent.map(a => `
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:#fef2f2;border-radius:6px;font-size:.82rem">
+          <span style="color:#dc2626">✕</span> ${a.full_name}
+        </div>`).join('');
+    } else { ab.style.display = 'none'; }
+  } catch(e) {}
+}
+
+async function manualMark() {
+  const sid    = document.getElementById('manual-sid').value.trim();
+  const status = document.getElementById('manual-status').value;
+  if (!sid || !sessionId) { showToast('Enter student ID and start a session first', 'error'); return; }
+  try {
+    await apiFetch('/attendance/manual-mark', {
+      method: 'POST',
+      body: JSON.stringify({ session_id: sessionId, student_id: sid, status })
+    });
+    showToast('Marked ' + sid + ' as ' + status, 'success');
+    document.getElementById('manual-sid').value = '';
+    await refreshSummary();
+  } catch(e) { showToast(e.message, 'error'); }
+}
+</script>
+</body>
+</html>

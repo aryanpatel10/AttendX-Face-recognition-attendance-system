@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FaceAttend — Reports</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <div class="page-header">
+      <h1>Reports</h1>
+      <p>Filter, analyse and export attendance data</p>
+    </div>
+    <div class="page-body">
+
+      <!-- Filters -->
+      <div class="card card-body mb-4">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;align-items:end">
+          <div class="form-group" style="margin:0">
+            <label>Subject</label>
+            <select id="f-subject"><option value="">All subjects</option></select>
+          </div>
+          <div class="form-group" style="margin:0">
+            <label>Student</label>
+            <select id="f-student"><option value="">All students</option></select>
+          </div>
+          <div class="form-group" style="margin:0">
+            <label>From Date</label>
+            <input type="date" id="f-from" />
+          </div>
+          <div class="form-group" style="margin:0">
+            <label>To Date</label>
+            <input type="date" id="f-to" />
+          </div>
+          <button class="btn btn-primary" onclick="loadReport()" style="height:38px">Apply Filters</button>
+          <button class="btn btn-secondary" onclick="exportCSV()" style="height:38px">⬇ Export CSV</button>
+        </div>
+      </div>
+
+      <!-- Student subject-wise breakdown (shown when student filter active) -->
+      <div id="student-breakdown" style="display:none;margin-bottom:20px">
+        <div class="card">
+          <div class="card-header">Subject-wise Breakdown — <span id="breakdown-name"></span></div>
+          <div class="card-body">
+            <div id="breakdown-bars" style="display:flex;flex-direction:column;gap:10px"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Charts -->
+      <div class="grid-2 mb-4">
+        <div class="card">
+          <div class="card-header">Attendance % by Subject</div>
+          <div class="card-body">
+            <canvas id="chart-bar" width="500" height="200"></canvas>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">Present vs Absent (Totals)</div>
+          <div class="card-body" style="display:flex;align-items:center;gap:20px">
+            <canvas id="chart-donut" width="160" height="160"></canvas>
+            <div id="donut-legend" style="font-size:.82rem;display:flex;flex-direction:column;gap:10px"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Table -->
+      <div class="card">
+        <div class="card-header">
+          Records
+          <span id="record-count" class="text-muted text-sm"></span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Student</th>
+                <th>Subject</th>
+                <th>Status</th>
+                <th>Confidence</th>
+                <th>Method</th>
+              </tr>
+            </thead>
+            <tbody id="report-tbody">
+              <tr><td colspan="6" style="text-align:center;padding:40px;color:#94a3b8">Apply filters to load records</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+<div id="toast-container"></div>
+<script src="/js/app.js"></script>
+<script>
+renderLayout('reports');
+
+let currentRecords = [];
+
+async function initFilters() {
+  const [subjects, students] = await Promise.all([
+    apiFetch('/subjects/'),
+    apiFetch('/students/')
+  ]);
+  const ss = document.getElementById('f-subject');
+  subjects.forEach(s => { const o = new Option(`${s.code} — ${s.name}`, s.id); ss.appendChild(o); });
+
+  const st = document.getElementById('f-student');
+  students.forEach(s => { const o = new Option(`${s.full_name} (${s.student_id})`, s.student_id); st.appendChild(o); });
+}
+
+async function loadReport() {
+  const params = new URLSearchParams();
+  const subjectId = document.getElementById('f-subject').value;
+  const studentId = document.getElementById('f-student').value;
+  const fromDate  = document.getElementById('f-from').value;
+  const toDate    = document.getElementById('f-to').value;
+  if (subjectId) params.set('subject_id', subjectId);
+  if (studentId) params.set('student_id', studentId);
+  if (fromDate)  params.set('from_date', fromDate);
+  if (toDate)    params.set('to_date', toDate);
+
+  try {
+    const data = await apiFetch('/attendance/report?' + params.toString());
+    currentRecords = data.records;
+    document.getElementById('record-count').textContent = `${data.total} records`;
+    renderTable(currentRecords);
+    renderCharts(currentRecords);
+
+    // Student breakdown
+    if (studentId) {
+      const breakdown = await apiFetch(`/attendance/student-stats/${studentId}`);
+      const studentName = document.getElementById('f-student').options[document.getElementById('f-student').selectedIndex].text;
+      document.getElementById('breakdown-name').textContent = studentName.split('(')[0].trim();
+      document.getElementById('student-breakdown').style.display = '';
+      document.getElementById('breakdown-bars').innerHTML = breakdown.subjects.map(s => {
+        const color = s.percentage >= 75 ? 'green' : s.percentage >= 50 ? 'amber' : 'red';
+        return `<div>
+          <div style="display:flex;justify-content:space-between;font-size:.82rem;margin-bottom:4px">
+            <span><b>${s.code}</b> — ${s.name}</span>
+            <span style="font-weight:600;color:${s.percentage>=75?'#16a34a':s.percentage>=50?'#d97706':'#dc2626'}">${s.percentage}% (${s.present}/${s.total})</span>
+          </div>
+          <div class="progress"><div class="progress-bar ${color}" style="width:${s.percentage}%"></div></div>
+        </div>`;
+      }).join('');
+    } else {
+      document.getElementById('student-breakdown').style.display = 'none';
+    }
+  } catch (e) {
+    showToast('Failed to load report: ' + e.message, 'error');
+  }
+}
+
+function renderTable(records) {
+  const tbody = document.getElementById('report-tbody');
+  if (!records.length) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:40px;color:#94a3b8">No records found for selected filters</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = records.slice(0, 200).map(r => `
+    <tr>
+      <td>${r.date}</td>
+      <td>
+        <div style="font-weight:500">${r.student_name}</div>
+        <div style="font-size:.72rem;color:#94a3b8">${r.student_id}</div>
+      </td>
+      <td>
+        <div>${r.subject_name}</div>
+        <div style="font-size:.72rem;color:#94a3b8;font-family:monospace">${r.subject_code}</div>
+      </td>
+      <td>${statusBadge(r.status)}</td>
+      <td>${r.recognition_confidence ? r.recognition_confidence.toFixed(1) + '%' : '—'}</td>
+      <td style="font-size:.8rem;color:#64748b">${r.marked_by_face ? '🤖 Face' : '✏️ Manual'}</td>
+    </tr>`).join('');
+}
+
+function renderCharts(records) {
+  // Bar: attendance % per subject
+  const subMap = {};
+  records.forEach(r => {
+    if (!subMap[r.subject_code]) subMap[r.subject_code] = { total: 0, present: 0 };
+    subMap[r.subject_code].total++;
+    if (r.status === 'present') subMap[r.subject_code].present++;
+  });
+  const labels = Object.keys(subMap).slice(0, 8);
+  const values = labels.map(k => subMap[k].total ? Math.round(subMap[k].present / subMap[k].total * 100) : 0);
+  drawBarChart('chart-bar', labels.length ? labels : ['No data'], labels.length ? values : [0]);
+
+  // Donut: present vs absent
+  const totalPresent = records.filter(r => r.status === 'present').length;
+  const totalAbsent  = records.length - totalPresent;
+  drawDonutChart('chart-donut', [
+    { value: totalPresent, color: '#22c55e', label: 'Present' },
+    { value: totalAbsent,  color: '#f1f5f9', label: 'Absent'  },
+  ]);
+  document.getElementById('donut-legend').innerHTML = `
+    <div style="display:flex;gap:8px;align-items:center"><span style="width:12px;height:12px;border-radius:50%;background:#22c55e;display:inline-block"></span>Present: <b>${totalPresent}</b></div>
+    <div style="display:flex;gap:8px;align-items:center"><span style="width:12px;height:12px;border-radius:50%;background:#f1f5f9;border:1px solid #e2e8f0;display:inline-block"></span>Absent: <b>${totalAbsent}</b></div>
+    <div style="display:flex;gap:8px;align-items:center;color:#94a3b8;font-size:.75rem">Total: ${records.length}</div>`;
+}
+
+function exportCSV() {
+  if (!currentRecords.length) { showToast('Load a report first', 'error'); return; }
+  const headers = ['Date','Student ID','Student Name','Subject Code','Subject Name','Status','Confidence','Method'];
+  const rows = currentRecords.map(r => [
+    r.date, r.student_id, `"${r.student_name}"`,
+    r.subject_code, `"${r.subject_name}"`,
+    r.status,
+    r.recognition_confidence ? r.recognition_confidence.toFixed(2) : '',
+    r.marked_by_face ? 'Face' : 'Manual'
+  ]);
+  const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `attendance_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('CSV exported!', 'success');
+}
+
+initFilters();
+loadReport(); // Load all records by default
+</script>
+</body>
+</html>

@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FaceAttend — Students</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <div class="page-header">
+      <h1 id="page-title">Students</h1>
+      <p id="page-sub">Loading...</p>
+    </div>
+    <div class="page-body">
+
+      <!-- STUDENT VIEW: only their own profile -->
+      <div id="student-view" style="display:none">
+        <div class="grid-2" style="align-items:start">
+          <div class="card card-body">
+            <div style="display:flex;align-items:center;gap:16px;margin-bottom:20px">
+              <div class="user-avatar" style="width:64px;height:64px;font-size:1.5rem;flex-shrink:0" id="own-avatar">?</div>
+              <div>
+                <h2 id="own-name">—</h2>
+                <p class="text-muted" id="own-email">—</p>
+                <p class="text-muted text-sm" id="own-dept">—</p>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+              <div style="padding:12px;background:var(--bg);border-radius:8px">
+                <div class="text-muted text-sm">Student ID</div>
+                <div style="font-weight:600;font-family:monospace" id="own-sid">—</div>
+              </div>
+              <div style="padding:12px;background:var(--bg);border-radius:8px">
+                <div class="text-muted text-sm">Roll Number</div>
+                <div style="font-weight:600" id="own-roll">—</div>
+              </div>
+              <div style="padding:12px;background:var(--bg);border-radius:8px">
+                <div class="text-muted text-sm">Semester</div>
+                <div style="font-weight:600" id="own-sem">—</div>
+              </div>
+              <div style="padding:12px;background:var(--bg);border-radius:8px">
+                <div class="text-muted text-sm">Face Status</div>
+                <div id="own-face-status">—</div>
+              </div>
+            </div>
+            <div style="margin-top:16px">
+              <a href="/enroll" class="btn btn-primary w-full" style="justify-content:center">
+                🔍 Go to Face Enrollment
+              </a>
+            </div>
+          </div>
+
+          <div class="card card-body">
+            <h3 style="margin-bottom:16px">My Attendance</h3>
+            <div id="own-stats">
+              <p class="text-muted text-sm">Loading attendance...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ADMIN/TEACHER VIEW: all students -->
+      <div id="admin-view" style="display:none">
+        <div class="flex-between mb-4">
+          <div class="input-group" style="max-width:320px">
+            <span class="input-icon">🔍</span>
+            <input type="text" id="search" placeholder="Search by name, ID or department..." oninput="filterStudents()" />
+          </div>
+          <button class="btn btn-primary" onclick="openModal('add-modal')">+ Add Student</button>
+        </div>
+        <div class="card">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Student</th><th>ID</th><th>Department</th>
+                  <th>Semester</th><th>Face Status</th><th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="student-tbody">
+                <tr><td colspan="6" style="text-align:center;padding:40px;color:#94a3b8">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- Add Student Modal -->
+<div class="modal-bg" id="add-modal" style="display:none">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Add New Student</h2>
+      <button class="btn-close" onclick="closeModal('add-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="grid-2">
+        <div class="form-group"><label>Full Name *</label><input id="f-name" placeholder="Rahul Patel" /></div>
+        <div class="form-group"><label>Email *</label><input id="f-email" type="email" placeholder="rahul@example.com" /></div>
+        <div class="form-group"><label>Password *</label><input id="f-password" type="password" placeholder="Min 6 characters" /></div>
+        <div class="form-group"><label>Phone</label><input id="f-phone" placeholder="9876543210" /></div>
+        <div class="form-group"><label>Student ID *</label><input id="f-sid" placeholder="CS2024001" /></div>
+        <div class="form-group"><label>Roll Number *</label><input id="f-roll" placeholder="001" /></div>
+        <div class="form-group">
+          <label>Department *</label>
+          <select id="f-dept">
+            <option>Computer Science</option><option>Electronics</option>
+            <option>Mechanical</option><option>Civil</option><option>Chemical</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Semester *</label>
+          <select id="f-sem">
+            <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+            <option value="4">4</option><option value="5">5</option><option value="6">6</option>
+            <option value="7">7</option><option value="8">8</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('add-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="createStudent()">Create Student</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="/js/app.js"></script>
+<script>
+renderLayout('students');
+const user = getUser();
+let allStudents = [];
+
+async function init() {
+  if (user.role === 'student') {
+    document.getElementById('student-view').style.display = '';
+    document.getElementById('admin-view').style.display   = 'none';
+    document.getElementById('page-title').textContent     = 'My Profile';
+    document.getElementById('page-sub').textContent       = 'Your student details and attendance summary';
+
+    try {
+      const students = await apiFetch('/students/');
+      const me = students.find(s => s.email === user.email);
+      if (!me) { showToast('Profile not found. Contact admin.', 'error'); return; }
+
+      document.getElementById('own-avatar').textContent    = (me.full_name || '?')[0].toUpperCase();
+      document.getElementById('own-name').textContent      = me.full_name;
+      document.getElementById('own-email').textContent     = me.email;
+      document.getElementById('own-dept').textContent      = me.department;
+      document.getElementById('own-sid').textContent       = me.student_id;
+      document.getElementById('own-roll').textContent      = me.roll_number;
+      document.getElementById('own-sem').textContent       = 'Semester ' + me.semester;
+      document.getElementById('own-face-status').innerHTML = me.face_enrolled
+        ? '<span class="badge badge-present">✓ Enrolled</span>'
+        : '<span class="badge badge-absent">✕ Not enrolled</span>';
+
+      try {
+        const stats = await apiFetch('/attendance/student-stats/' + me.student_id);
+        const statsDiv = document.getElementById('own-stats');
+        if (!stats.subjects.length) {
+          statsDiv.innerHTML = '<p class="text-muted text-sm">No attendance records yet.</p>';
+        } else {
+          statsDiv.innerHTML = stats.subjects.map(s => {
+            const color = s.percentage >= 75 ? 'green' : s.percentage >= 50 ? 'amber' : 'red';
+            const tc = s.percentage >= 75 ? '#16a34a' : s.percentage >= 50 ? '#d97706' : '#dc2626';
+            return '<div style="margin-bottom:14px">'
+              + '<div style="display:flex;justify-content:space-between;font-size:.85rem;margin-bottom:4px">'
+              + '<span><b>' + s.code + '</b> — ' + s.name + '</span>'
+              + '<span style="font-weight:700;color:' + tc + '">' + s.percentage + '%</span></div>'
+              + '<div class="progress"><div class="progress-bar ' + color + '" style="width:' + s.percentage + '%"></div></div>'
+              + '<div style="font-size:.72rem;color:#94a3b8;margin-top:2px">' + s.present + ' / ' + s.total + ' classes attended</div></div>';
+          }).join('');
+        }
+      } catch(e) {
+        document.getElementById('own-stats').innerHTML = '<p class="text-muted text-sm">Could not load attendance.</p>';
+      }
+    } catch(e) {
+      showToast('Could not load profile: ' + e.message, 'error');
+    }
+
+  } else {
+    document.getElementById('admin-view').style.display   = '';
+    document.getElementById('student-view').style.display = 'none';
+    loadStudents();
+  }
+}
+
+async function loadStudents() {
+  try {
+    allStudents = await apiFetch('/students/');
+    document.getElementById('page-sub').textContent = allStudents.length + ' students registered';
+    renderTable(allStudents);
+  } catch(e) { showToast('Failed to load: ' + e.message, 'error'); }
+}
+
+function renderTable(students) {
+  const tbody = document.getElementById('student-tbody');
+  if (!students.length) {
+    tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><div class="icon">👥</div><p>No students found</p>'
+      + '<button class="btn btn-primary" onclick="openModal(\'add-modal\')">Add First Student</button></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = students.map(s =>
+    '<tr>'
+    + '<td><div style="display:flex;align-items:center;gap:10px">'
+    + '<div class="user-avatar" style="width:32px;height:32px;font-size:.8rem;flex-shrink:0">' + (s.full_name||'?')[0].toUpperCase() + '</div>'
+    + '<div><div style="font-weight:500">' + s.full_name + '</div>'
+    + '<div class="text-muted" style="font-size:.75rem">' + s.email + '</div></div></div></td>'
+    + '<td><code style="font-size:.78rem;background:#f1f5f9;padding:2px 6px;border-radius:4px">' + s.student_id + '</code></td>'
+    + '<td>' + s.department + '</td>'
+    + '<td>' + s.semester + '</td>'
+    + '<td>' + (s.face_enrolled
+        ? '<span class="badge badge-present">✓ Enrolled (' + s.enrollment_img_count + ' imgs)</span>'
+        : '<span class="badge badge-absent">✕ Not enrolled</span>') + '</td>'
+    + '<td><a href="/enroll?student=' + s.student_id + '" class="btn btn-secondary btn-sm">🔍 '
+    + (s.face_enrolled ? 'Re-enroll' : 'Enroll Face') + '</a></td>'
+    + '</tr>'
+  ).join('');
+}
+
+function filterStudents() {
+  const q = document.getElementById('search').value.toLowerCase();
+  renderTable(allStudents.filter(s =>
+    s.full_name.toLowerCase().includes(q) ||
+    s.student_id.toLowerCase().includes(q) ||
+    s.department.toLowerCase().includes(q)
+  ));
+}
+
+async function createStudent() {
+  const payload = {
+    full_name:   document.getElementById('f-name').value.trim(),
+    email:       document.getElementById('f-email').value.trim(),
+    password:    document.getElementById('f-password').value,
+    phone:       document.getElementById('f-phone').value.trim(),
+    student_id:  document.getElementById('f-sid').value.trim(),
+    roll_number: document.getElementById('f-roll').value.trim(),
+    department:  document.getElementById('f-dept').value,
+    semester:    parseInt(document.getElementById('f-sem').value),
+  };
+  for (const f of ['full_name','email','password','student_id','roll_number']) {
+    if (!payload[f]) { showToast(f.replace('_',' ') + ' is required', 'error'); return; }
+  }
+  try {
+    await apiFetch('/students/create', { method:'POST', body: JSON.stringify(payload) });
+    showToast('Student created!', 'success');
+    closeModal('add-modal');
+    ['f-name','f-email','f-password','f-phone','f-sid','f-roll'].forEach(id => document.getElementById(id).value = '');
+    await loadStudents();
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
+init();
+</script>
+</body>
+</html>

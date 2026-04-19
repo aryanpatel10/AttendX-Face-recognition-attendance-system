@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FaceAttend — Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <div class="page-header">
+      <h1 id="welcome-title">Dashboard</h1>
+      <p id="welcome-sub">Loading...</p>
+    </div>
+    <div class="page-body">
+
+      <!-- Hero banner -->
+      <div style="background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border-radius:14px;padding:22px 28px;display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+        <div>
+          <p style="opacity:.8;font-size:.85rem;margin-bottom:4px">Ready to take attendance?</p>
+          <h2 style="font-size:1.3rem;font-weight:700">Start a live recognition session</h2>
+        </div>
+        <button class="btn" style="background:#fff;color:#4f46e5;font-weight:600;padding:10px 22px" onclick="window.location.href='/attendance'">📷 Open Camera</button>
+      </div>
+
+      <!-- Stats row -->
+      <div class="stats-grid">
+        <div class="card stat-card">
+          <div class="stat-icon blue">👥</div>
+          <div>
+            <div class="stat-label">Total Students</div>
+            <div class="stat-value" id="stat-students">—</div>
+          </div>
+        </div>
+        <div class="card stat-card">
+          <div class="stat-icon green">🔍</div>
+          <div>
+            <div class="stat-label">Face Enrolled</div>
+            <div class="stat-value" id="stat-enrolled">—</div>
+            <div class="stat-sub" id="stat-pending">— pending</div>
+          </div>
+        </div>
+        <div class="card stat-card">
+          <div class="stat-icon amber">📚</div>
+          <div>
+            <div class="stat-label">Subjects</div>
+            <div class="stat-value" id="stat-subjects">—</div>
+          </div>
+        </div>
+        <div class="card stat-card">
+          <div class="stat-icon purple">📋</div>
+          <div>
+            <div class="stat-label">Total Records</div>
+            <div class="stat-value" id="stat-records">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Charts row -->
+      <div class="grid-2" style="margin-bottom:24px">
+        <div class="card">
+          <div class="card-header">Attendance by Subject</div>
+          <div class="card-body">
+            <canvas id="chart-subjects" width="500" height="220"></canvas>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">Face Enrollment Status</div>
+          <div class="card-body" style="display:flex;gap:24px;align-items:center">
+            <canvas id="chart-enroll" width="160" height="160"></canvas>
+            <div id="enroll-legend" style="font-size:.82rem;display:flex;flex-direction:column;gap:8px"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick links -->
+      <div class="grid-3">
+        <div class="card card-body" style="cursor:pointer;transition:box-shadow .2s" onclick="location.href='/students'" onmouseenter="this.style.boxShadow='0 4px 16px rgba(0,0,0,.10)'" onmouseleave="this.style.boxShadow=''">
+          <div style="font-size:28px;margin-bottom:10px">👥</div>
+          <h3>Manage Students</h3>
+          <p class="text-muted text-sm mt-4">Add, view and manage student records</p>
+        </div>
+        <div class="card card-body" style="cursor:pointer;transition:box-shadow .2s" onclick="location.href='/enroll'" onmouseenter="this.style.boxShadow='0 4px 16px rgba(0,0,0,.10)'" onmouseleave="this.style.boxShadow=''">
+          <div style="font-size:28px;margin-bottom:10px">🔍</div>
+          <h3>Enroll Faces</h3>
+          <p class="text-muted text-sm mt-4">Register student faces for recognition</p>
+        </div>
+        <div class="card card-body" style="cursor:pointer;transition:box-shadow .2s" onclick="location.href='/reports'" onmouseenter="this.style.boxShadow='0 4px 16px rgba(0,0,0,.10)'" onmouseleave="this.style.boxShadow=''">
+          <div style="font-size:28px;margin-bottom:10px">📊</div>
+          <h3>View Reports</h3>
+          <p class="text-muted text-sm mt-4">Filter and export attendance data</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+<div id="toast-container"></div>
+<script src="/js/app.js"></script>
+<script>
+renderLayout('dashboard');
+const user = getUser();
+document.getElementById('welcome-title').textContent = 'Dashboard';
+document.getElementById('welcome-sub').textContent = `Welcome back, ${user?.full_name || 'User'}`;
+
+async function loadDashboard() {
+  try {
+    const [students, subjects, report] = await Promise.all([
+      apiFetch('/students/'),
+      apiFetch('/subjects/'),
+      apiFetch('/attendance/report')
+    ]);
+
+    const enrolled = students.filter(s => s.face_enrolled).length;
+    document.getElementById('stat-students').textContent = students.length;
+    document.getElementById('stat-enrolled').textContent = enrolled;
+    document.getElementById('stat-pending').textContent = `${students.length - enrolled} pending`;
+    document.getElementById('stat-subjects').textContent = subjects.length;
+    document.getElementById('stat-records').textContent = report.total;
+
+    // Bar chart: attendance % per subject
+    const subjectMap = {};
+    (report.records || []).forEach(r => {
+      if (!subjectMap[r.subject_code]) subjectMap[r.subject_code] = { total: 0, present: 0 };
+      subjectMap[r.subject_code].total++;
+      if (r.status === 'present') subjectMap[r.subject_code].present++;
+    });
+    const labels = Object.keys(subjectMap).slice(0, 8);
+    const values = labels.map(k => subjectMap[k].total ? Math.round(subjectMap[k].present / subjectMap[k].total * 100) : 0);
+    if (labels.length) drawBarChart('chart-subjects', labels, values);
+
+    // Donut chart: enrolled vs not enrolled
+    drawDonutChart('chart-enroll', [
+      { value: enrolled,                    color: '#4f46e5', label: 'Enrolled' },
+      { value: students.length - enrolled,  color: '#e2e8f0', label: 'Pending' },
+    ]);
+    document.getElementById('enroll-legend').innerHTML = `
+      <div style="display:flex;gap:8px;align-items:center"><span style="width:12px;height:12px;border-radius:50%;background:#4f46e5;display:inline-block"></span>Enrolled: <b>${enrolled}</b></div>
+      <div style="display:flex;gap:8px;align-items:center"><span style="width:12px;height:12px;border-radius:50%;background:#e2e8f0;display:inline-block"></span>Pending: <b>${students.length - enrolled}</b></div>`;
+  } catch (e) {
+    showToast('Failed to load dashboard: ' + e.message, 'error');
+  }
+}
+loadDashboard();
+</script>
+</body>
+</html>

@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FaceAttend — Subjects</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <div class="page-header">
+      <h1>Subjects</h1>
+      <p id="sub-count">Loading...</p>
+    </div>
+    <div class="page-body">
+
+      <div class="flex-between mb-4">
+        <div></div>
+        <button class="btn btn-primary" onclick="openModal('sub-modal')">+ Add Subject</button>
+      </div>
+
+      <div id="subjects-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px">
+        <p class="text-muted">Loading...</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Subject Modal -->
+<div class="modal-bg" id="sub-modal" style="display:none">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Add Subject</h2>
+      <button class="btn-close" onclick="closeModal('sub-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="grid-2">
+        <div class="form-group">
+          <label>Subject Code *</label>
+          <input id="s-code" placeholder="CS301" />
+        </div>
+        <div class="form-group">
+          <label>Credits</label>
+          <select id="s-credits">
+            <option value="1">1</option><option value="2">2</option>
+            <option value="3" selected>3</option><option value="4">4</option>
+          </select>
+        </div>
+        <div class="form-group" style="grid-column:1/-1">
+          <label>Subject Name *</label>
+          <input id="s-name" placeholder="Data Structures & Algorithms" />
+        </div>
+        <div class="form-group">
+          <label>Department *</label>
+          <select id="s-dept">
+            <option>Computer Science</option>
+            <option>Electronics</option>
+            <option>Mechanical</option>
+            <option>Civil</option>
+            <option>Chemical</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Semester *</label>
+          <select id="s-sem">
+            <option value="1">1</option><option value="2">2</option>
+            <option value="3">3</option><option value="4">4</option>
+            <option value="5">5</option><option value="6">6</option>
+            <option value="7">7</option><option value="8">8</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('sub-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="createSubject()">Create Subject</button>
+    </div>
+  </div>
+</div>
+
+<!-- Enroll Student Modal -->
+<div class="modal-bg" id="enroll-modal" style="display:none">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Enroll Student in Subject</h2>
+      <button class="btn-close" onclick="closeModal('enroll-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="text-muted text-sm mb-4">Subject: <strong id="enroll-subject-name"></strong></p>
+      <div class="form-group">
+        <label>Select Student</label>
+        <select id="enroll-student-sel">
+          <option value="">Choose student...</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('enroll-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="enrollStudent()">Enroll</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="/js/app.js"></script>
+<script>
+renderLayout('subjects');
+
+let subjects = [], students = [], selectedSubjectId = null;
+const deptColors = {
+  'Computer Science': '#4f46e5', 'Electronics': '#0891b2',
+  'Mechanical': '#d97706', 'Civil': '#059669', 'Chemical': '#dc2626'
+};
+
+async function loadAll() {
+  [subjects, students] = await Promise.all([
+    apiFetch('/subjects/'),
+    apiFetch('/students/')
+  ]);
+  document.getElementById('sub-count').textContent =
+    `${subjects.length} subjects · ${[...new Set(subjects.map(s => s.department))].length} departments`;
+  renderSubjects();
+
+  const sel = document.getElementById('enroll-student-sel');
+  sel.innerHTML = '<option value="">Choose student...</option>' +
+    students.map(s => `<option value="${s.student_id}">${s.full_name} (${s.student_id})</option>`).join('');
+}
+
+function renderSubjects() {
+  const grid = document.getElementById('subjects-grid');
+  if (!subjects.length) {
+    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1">
+      <div class="icon">📚</div><p>No subjects added yet</p>
+      <button class="btn btn-primary" onclick="openModal('sub-modal')">Add First Subject</button>
+    </div>`;
+    return;
+  }
+
+  // Group by department
+  const byDept = {};
+  subjects.forEach(s => { (byDept[s.department] = byDept[s.department] || []).push(s); });
+
+  grid.innerHTML = '';
+  Object.entries(byDept).forEach(([dept, list]) => {
+    const section = document.createElement('div');
+    section.style.cssText = 'grid-column:1/-1';
+    section.innerHTML = `<h3 style="font-size:.8rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px">${dept}</h3>`;
+    grid.appendChild(section);
+
+    const subGrid = document.createElement('div');
+    subGrid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;grid-column:1/-1;margin-bottom:24px';
+    subGrid.innerHTML = list.map(s => {
+      const color = deptColors[s.department] || '#4f46e5';
+      return `<div class="card card-body" style="border-left:4px solid ${color}">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+          <div>
+            <span style="font-size:.72rem;font-weight:700;color:${color};background:${color}15;padding:2px 8px;border-radius:99px">${s.code}</span>
+            <h3 style="margin-top:8px;font-size:.92rem">${s.name}</h3>
+            <p class="text-muted text-sm" style="margin-top:3px">Semester ${s.semester} · ${s.credits} credits</p>
+          </div>
+        </div>
+        <button class="btn btn-secondary btn-sm" style="margin-top:12px;width:100%" onclick="openEnrollModal(${s.id}, '${s.name}')">+ Enroll Student</button>
+      </div>`;
+    }).join('');
+    grid.appendChild(subGrid);
+  });
+}
+
+async function createSubject() {
+  const payload = {
+    code:       document.getElementById('s-code').value.trim(),
+    name:       document.getElementById('s-name').value.trim(),
+    department: document.getElementById('s-dept').value,
+    semester:   parseInt(document.getElementById('s-sem').value),
+    credits:    parseInt(document.getElementById('s-credits').value),
+  };
+  if (!payload.code || !payload.name) { showToast('Code and name are required', 'error'); return; }
+  try {
+    await apiFetch('/subjects/create', { method:'POST', body: JSON.stringify(payload) });
+    showToast('Subject created!', 'success');
+    closeModal('sub-modal');
+    ['s-code','s-name'].forEach(id => document.getElementById(id).value = '');
+    await loadAll();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+function openEnrollModal(subjectId, subjectName) {
+  selectedSubjectId = subjectId;
+  document.getElementById('enroll-subject-name').textContent = subjectName;
+  openModal('enroll-modal');
+}
+
+async function enrollStudent() {
+  const studentId = document.getElementById('enroll-student-sel').value;
+  if (!studentId) { showToast('Select a student', 'error'); return; }
+  try {
+    await apiFetch('/subjects/enroll', {
+      method:'POST',
+      body: JSON.stringify({ subject_id: selectedSubjectId, student_id: studentId })
+    });
+    showToast('Student enrolled!', 'success');
+    closeModal('enroll-modal');
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+loadAll();
+</script>
+</body>
+</html>
